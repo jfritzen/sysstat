@@ -89,7 +89,7 @@ so svctm is wrong (too small) by a factor of N !
 
 In order to determine the proper service time one needs N. Queue
 depth might be 1 for some devices, 32 for others or 256 for SSDs.
-In the block layer we don't now N for the specific device. But
+In the block layer we don't know N for the specific device. But
 we have field 11. According to 
 
 https://www.percona.com/doc/percona-toolkit/2.1/pt-diskstats.html

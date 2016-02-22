@@ -871,7 +871,7 @@ void write_disk_stat_header(int *fctr)
 		else {
 			printf("   rsec/s   wsec/s");
 		}
-		printf(" avgrq-sz avgqu-sz   await r_await w_await  svctm  load\n");
+		printf(" avgrq-sz avgqu-sz   await r_await w_await  svctm   load\n");
 	}
 	else {
 		/* Basic stats */
