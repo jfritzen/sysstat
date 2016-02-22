@@ -1,0 +1,157 @@
+== A Necessary Fix for Service Time and Utilization in Iostat ==
+
+I've been using iostat from the sysstat package for some time now
+and think I stumbled over an inconsistency regarding svctm.
+
+== Symptom ==
+
+Often I observe the following iostat output for a lightly loaded disk:
+
+[root@somehost ~]# iostat -x sdc 5 1
+Linux 2.6.32-573.1.1.el6.x86_64 (somehost)     02/22/16        _x86_64_        (32 CPU)
+
+avg-cpu:  %user   %nice %system %iowait  %steal   %idle
+           0.83    0.00    0.35    0.19    0.00   98.64
+
+Device:         rrqm/s   wrqm/s     r/s     w/s   rsec/s   wsec/s avgrq-sz avgqu-sz   await  svctm  %util
+sdc               0.00    12.55   56.26   37.64  3543.71   725.77    45.47     0.04    0.39   0.11   1.05
+
+sysstat package is 9.0.4. "somehost" is a physical Linux server,
+no VM. sdc is an SSD with a queue_depth of 256:
+
+[root@somehost ~]# cat /sys/block/sdc/device/queue_depth 
+256
+
+What one can see is that avgqu-sz is small (0.04) but await and
+svctm show a large difference (0.39 vs 0.11). It's unlikely that
+the response time await is dominated by waiting time in the queue
+(await-svctm=0.28) when there is almost no request waiting
+(avgqu-sz=0.04). Or put another way: On a system with 256 available
+IO slots and no requests waiting one would expect every incoming
+request to be serviced by the disk immediately (await=svctm). Only
+when avgqu-sz is larger than the queue depth of 256 I would expect
+there to be a noticeable difference between await and svctm.
+
+I think the calculation of svctm is buggy.
+
+== Analysis ==
+
+iostat calculates svctm from /proc/diskstats (or other statistics
+files but with the same content), using field 10, field 1 and field
+5 (following the numbering in
+https://www.kernel.org/doc/Documentation/iostats.txt). From field
+1 and 5 one can calculate the number of transactions per second (or
+1000 ms) t.
+
+The problematic field is field 10. According to this site
+
+https://www.percona.com/doc/percona-toolkit/2.1/pt-diskstats.html
+
+field 10 counts the time when at least one request is being serviced
+by the disk.
+
+=== Single queue, single server ===
+
+For a disk which can only service one request simultaneously, field
+10 is fine and can be used to calculate the utilization. In queueing
+theory this would be a single queue with a single server. When the
+disk is 100% busy this means that for every 1000 ms wall clock time
+field 10 increases by 1000 too. When t requests have been serviced
+during the 1000 ms then the service time must be 
+
+	1000ms/t = (delta(field 10) in ms)/t
+
+which is what svctm shows. 
+
+=== Single queue, multiple servers ===
+
+For a disk which can process multiple requests at a time (256 in
+our example), field 10 is useless. 
+
+Assuming the disk can service N requests simultaneously then we
+have a system with a single queue and N servers in queueing theory
+terms. Instead of "server" I call that device IO slot. Let's further
+assume that t is large and each of the IO slots is working at maximum
+utilization=100%.
+
+It's fair to assume that the requests are distributed evenly
+among the N IO slots, so (taking the numbers from above) every 1000
+ms wall clock time, each IO slot processes t/N requests.
+
+Field 10 still increments by 1000 ms every second, because there
+is at least one service request active all the time, leading to
+svctm=1000ms/t again.
+
+But the service time should reflect the time that a single server
+(aka IO slot) takes to process a request, ie in our case t/N requests
+in 1000 ms wall clock time. IE the proper service time is N*1000ms/t,
+so svctm is wrong (too small) by a factor of N !
+
+In order to determine the proper service time one needs N. Queue
+depth might be 1 for some devices, 32 for others or 256 for SSDs.
+In the block layer we don't now N for the specific device. But
+we have field 11. According to 
+
+https://www.percona.com/doc/percona-toolkit/2.1/pt-diskstats.html
+
+field 11 counts the milliseconds spent servicing IOs for all currently
+processed requests.
+
+We recall our assumption that t requests are serviced by the entire
+disk in 1000 ms wall clock time and that each IO slot is working
+at maximum utilization, i.e. for every 1000 ms wall clock time, each
+IO slot spends 1000 ms servicing IOs. As we've seen field 10 will
+still increment by 1000 for every 1000 ms wall clock time. Field
+11 however will increase by N*1000 because it counts the time spent
+for *all* requests. We can now determine the proper service time:
+
+proper service time 	= (1000 ms)/(t/N) = (N*1000 ms)/t = 
+			= (delta(field 11) in ms)/t
+
+In the border case of N=1 field 11 and field 10 increase
+by the same amount, so the formula with field 11 still applies.
+
+==== Arbitrary utilization ====
+
+The discussion was made with the assumption that each IO slot
+is working at maximum utilization. Is the formula still valid,
+when the utilization per IO slot is between 0% and 100%?
+
+When the utilization is below 100% then we can't assume that all
+requests are handled evenly by the IO slots. It might also be that
+one IO slot handles all requests, and another IO slot does nothing.
+
+But on average we know that t requests have been processed during
+1000 ms wall clock time and that, summed over all requests, these
+took delta(field 11) ms to complete. So IO time spent for an 
+average request is still:
+
+proper service time	= (delta(field 11) in ms)/t
+
+The svctm is still wrong by a factor between 1 and N.
+
+=== %util ===
+
+For utilization there is no easy fix. The proper formula for 
+a period of 1000ms wall clock time would be
+
+%util = (delta(field 11) in ms)/(N*1000ms) * 100%
+
+but we don't know N. One could omit the N and define a
+new variable
+
+load = (delta(field 11) in ms)/(1000 ms)
+
+The load would range between 0 and N (with N unknown) and
+indicate the average number of requests executing in parallel in 
+the disk (or hba for that matter). Even with N unkown this
+would be still better than the current %util which is nearly
+useless.
+
+== Suggested solution ==
+
+iostat should be using rq_ticks (field 11) from diskstats to calculate
+svctm not tot_ticks (field 10).
+
+%util should be removed and replaced by a new variable load.
+

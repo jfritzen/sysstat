@@ -680,7 +680,7 @@ void compute_ext_disk_stats(struct stats_disk *sdc, struct stats_disk *sdp,
 	double tput
 		= ((double) (sdc->nr_ios - sdp->nr_ios)) * HZ / itv;
 
-	xds->util  = S_VALUE(sdp->tot_ticks, sdc->tot_ticks, itv);
+	xds->util  = S_VALUE(sdp->rq_ticks, sdc->rq_ticks, itv);
 	xds->svctm = tput ? xds->util / tput : 0.0;
 	/*
 	 * Kernel gives ticks already in milliseconds for all platforms

@@ -871,7 +871,7 @@ void write_disk_stat_header(int *fctr)
 		else {
 			printf("   rsec/s   wsec/s");
 		}
-		printf(" avgrq-sz avgqu-sz   await r_await w_await  svctm  %%util\n");
+		printf(" avgrq-sz avgqu-sz   await r_await w_await  svctm  load\n");
 	}
 	else {
 		/* Basic stats */
@@ -927,6 +927,9 @@ void write_ext_stat(int curr, unsigned long long itv, int fctr,
 	sdc.tot_ticks = ioi->tot_ticks;
 	sdp.tot_ticks = ioj->tot_ticks;
 
+	sdc.rq_ticks = ioi->rq_ticks;
+	sdp.rq_ticks = ioj->rq_ticks;
+
 	sdc.rd_ticks  = ioi->rd_ticks;
 	sdp.rd_ticks  = ioj->rd_ticks;
 	sdc.wr_ticks  = ioi->wr_ticks;
@@ -961,7 +964,7 @@ void write_ext_stat(int curr, unsigned long long itv, int fctr,
 		cprintf_in(IS_STR, "%-13s", devname, 0);
 	}
 
-	/*       rrq/s wrq/s   r/s   w/s  rsec  wsec  rqsz  qusz await r_await w_await svctm %util */
+	/*       rrq/s wrq/s   r/s   w/s  rsec  wsec  rqsz  qusz await r_await w_await svctm load */
 	cprintf_f(2, 8, 2,
 		  S_VALUE(ioj->rd_merges, ioi->rd_merges, itv),
 		  S_VALUE(ioj->wr_merges, ioi->wr_merges, itv));
