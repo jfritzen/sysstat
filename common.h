@@ -198,6 +198,7 @@ struct ext_disk_stats {
 	double await;
 	double svctm;
 	double arqsz;
+	double avqsz;
 };
 
 /*

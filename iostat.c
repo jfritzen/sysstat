@@ -975,7 +975,7 @@ void write_ext_stat(int curr, unsigned long long itv, int fctr,
 		  S_VALUE(ioj->rd_sectors, ioi->rd_sectors, itv) / fctr,
 		  S_VALUE(ioj->wr_sectors, ioi->wr_sectors, itv) / fctr,
 		  xds.arqsz,
-		  S_VALUE(ioj->rq_ticks, ioi->rq_ticks, itv) / 1000.0);
+		  xds.avqsz);
 	cprintf_f(3, 7, 2, xds.await, r_await, w_await);
 	/* The ticks output is biased to output 1000 ticks per second */
 	cprintf_f(1, 6, 2, xds.svctm);
@@ -985,8 +985,8 @@ void write_ext_stat(int curr, unsigned long long itv, int fctr,
 	 * devices in the group. Else shi->used equals 1.
 	 */
 	cprintf_pc(1, 6, 2,
-		   shi->used ? xds.util / 10.0 / (double) shi->used
-		             : xds.util / 10.0);	/* shi->used should never be null here */
+		   shi->used ? xds.util / (double) shi->used
+		             : xds.util );	/* shi->used should never be null here */
 	printf("\n");
 }
 

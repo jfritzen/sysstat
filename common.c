@@ -680,8 +680,8 @@ void compute_ext_disk_stats(struct stats_disk *sdc, struct stats_disk *sdp,
 	double tput
 		= ((double) (sdc->nr_ios - sdp->nr_ios)) * HZ / itv;
 
-	xds->util  = S_VALUE(sdp->rq_ticks, sdc->rq_ticks, itv);
-	xds->svctm = tput ? xds->util / tput : 0.0;
+	xds->util  = S_VALUE(sdp->rq_ticks, sdc->rq_ticks, itv)/1000.0;
+	xds->svctm = tput ? xds->util * 1000.0 / tput : 0.0;
 	/*
 	 * Kernel gives ticks already in milliseconds for all platforms
 	 * => no need for further scaling.
@@ -692,6 +692,8 @@ void compute_ext_disk_stats(struct stats_disk *sdc, struct stats_disk *sdp,
 	xds->arqsz = (sdc->nr_ios - sdp->nr_ios) ?
 		((sdc->rd_sect - sdp->rd_sect) + (sdc->wr_sect - sdp->wr_sect)) /
 		((double) (sdc->nr_ios - sdp->nr_ios)) : 0.0;
+	// Using Little's law: queue length = arrival_rate in 1/s * total_waiting_time in s
+	xds->avqsz=tput * xds->await / 1000.0;
 }
 
 /*
